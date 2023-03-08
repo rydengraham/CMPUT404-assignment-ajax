@@ -32,14 +32,16 @@ var W = canvas.width  = window.innerWidth-6;
 var H = canvas.height = window.innerHeight-50;
 
 
-function sendJSONXMLHTTPRequest(url, objects, callback) {
+function sendJSONXMLHTTPRequest(url, objects, callback, requestType) {
     var xhr = new XMLHttpRequest();
     xhr.onreadystatechange = function () {
         if (xhr.readyState==4) {
             try {
                 if (xhr.status==200) {
                     //XXX: parse some JSON from the request!
+                    parsed = JSON.parse(xhr.responseText)
                     //XXX: Pass the data to the callback!
+                    callback(parsed)
                 }
             } 
             catch(e) {
@@ -50,6 +52,11 @@ function sendJSONXMLHTTPRequest(url, objects, callback) {
     //XXX: POST to a URL
     //XXX: set the mimetype and the accept headers!
     // Remember to use application/json !
+    xhr.open(requestType, url)
+    xhr.setRequestHeader("Accept", "application/json;charset=UTF-8")
+    xhr.setRequestHeader("Content-Type", "application/json;charset=UTF-8");
+    xhr.overrideMimeType("application/json")
+    xhr.send(JSON.stringify(objects))
 }
 
 
@@ -62,10 +69,35 @@ function drawCircle(context,entity) {
         lineWidth = 3;
         var x = entity["x"];
         var y = entity["y"];
-        //moveTo(x,y);
+        
         fillStyle = entity["colour"];
         strokeStyle = fillStyle;
-        arc(x, y, (entity["radius"])?entity["radius"]:50, 0, 2.0 * Math.PI, false);  
+
+        is404 = entity["is404"]
+        if (is404){
+            moveTo(x-40, y-20)
+            lineTo(x-40, y)
+            lineTo(x-20, y)
+            moveTo(x-20, y-20)
+            lineTo(x-20, y+20)
+
+            moveTo(x-10, y-20)
+            lineTo(x+10, y-20)
+            lineTo(x+10, y+20)
+            lineTo(x-10, y+20)
+            lineTo(x-10, y-20)
+
+            moveTo(x+20, y-20)
+            lineTo(x+20, y)
+            lineTo(x+40, y)
+            moveTo(x+40, y-20)
+            lineTo(x+40, y+20)
+        } else {
+            var previousX = entity["previousX"];
+            var previousY = entity["previousY"];
+            moveTo(previousX, previousY)
+            lineTo(x, y)
+        } 
         stroke();                                
     }
 }
@@ -136,9 +168,9 @@ function getPosition(e) {
 
 function addEntity(entity, data) {
     world[entity] = data;
-    drawNextFrame(); // (but should we?)
-    //XXX: Send a XHTML Request that updates the entity you just  modified!
-
+    // drawNextFrame(); // (but should we?)
+    //XXX: Send a XHTML Request that updates the entity you just modified!
+    sendJSONXMLHTTPRequest(`/entity/${entity}`, data, drawNextFrame, "POST")
 }
 
 var counter = 0;
@@ -246,22 +278,85 @@ mouse = (function() {
 
 // Add the application specific mouse listeners!
 //XXX: TODO Make these prettier!
+const rainbow = [
+  "#9400D3",
+  "#7600B3",
+  "#6900A2",
+  "#4B0082",
+  "#2900A8",
+  "#2400DA",
+  "#0000FF",
+  "#0044AA",
+  "#007777",
+  "#00AA44",
+  "#00FF00",
+  "#44FF00",
+  "#77FF00",
+  "#AAFF00",
+  "#FFFF00",
+  "#FFBF00",
+  "#FF9F00",
+  "#FF7F00",
+  "#FF5A00",
+  "#FF3700",
+  "#FF0000",
+  "#FF0041",
+  "#FF0092",
+];
+
+index = 0
+previousX = null
+previousY = null
+
+function getNextColor() {
+    return rainbow[index++%rainbow.length]
+}
+
 mouse.mousedowners.push(function(x,y,clicked,e) {
-    addEntityWithoutName({'x':x,'y':y,'colour':'blue'});
+    addEntityWithoutName({
+        'x':x,
+        'y':y,
+        'colour':'blue',
+        'is404':true
+    });
+    previousX = x
+    previousY = y
 });
 
 mouse.mouseuppers.push(function(x,y,clicked,e) {
-    addEntityWithoutName({'x':x,'y':y,'colour':'red'});
+    addEntityWithoutName({
+        'x':x,
+        'y':y,
+        'colour':'red',
+        'is404':true
+    });
+    previousX = null
+    previousY = null
 });
 
 mouse.mousedraggers.push(function(x,y,clicked,e) {
-    addEntityWithoutName({'x':x,'y':y,'colour':'green',
-                          'radius':10});
+    addEntityWithoutName({
+        'x':x,
+        'y':y,
+        'colour':getNextColor(),
+        'is404':false,
+        'previousX':previousX,
+        'previousY':previousY
+    });
+    previousX = x
+    previousY = y
 });
 
 
 function update() {
     //XXX: TODO Get the world from the webservice using a XMLHTTPRequest
+    function callback(response) {
+        world = response
+        drawNextFrame();
+    }
+
+    sendJSONXMLHTTPRequest(`/world`, null, callback, "GET")
+
     drawFrame();
 }
 
